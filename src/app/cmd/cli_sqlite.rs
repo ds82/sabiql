@@ -3,7 +3,8 @@ use std::path::Path;
 use uuid::{Uuid, uuid};
 
 use crate::domain::{
-    ConnectionId, SqliteConnectionConfig, SqliteConnectionConfigError, SqlitePathError,
+    ConnectionId, DatabaseType, SqliteConnectionConfig, SqliteConnectionConfigError,
+    SqlitePathError,
 };
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
@@ -98,6 +99,7 @@ pub fn activate_cli_sqlite_connection(
         &connection_id,
         &target.display_name(),
         &format!("sqlite://{canonical_path}"),
+        DatabaseType::SQLite,
     );
     state.modal.set_mode(InputMode::Normal);
     Ok(())

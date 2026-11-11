@@ -231,6 +231,7 @@ mod tests {
                 &ConnectionId::from_string("cli-sqlite-test"),
                 "app.db",
                 "sqlite:///tmp/app.db",
+                DatabaseType::SQLite,
             );
             state.modal.set_mode(InputMode::ConnectionError);
 

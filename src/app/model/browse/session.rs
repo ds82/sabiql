@@ -459,11 +459,17 @@ impl BrowseSession {
         self.clear_mysql_connection_probe();
     }
 
-    pub fn activate_cli_ephemeral_connection(&mut self, id: &ConnectionId, name: &str, dsn: &str) {
+    pub fn activate_cli_ephemeral_connection(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        dsn: &str,
+        database_type: DatabaseType,
+    ) {
         self.active_connection = Some(ActiveConnection {
             id: id.clone(),
             name: name.to_string(),
-            database_type: DatabaseType::SQLite,
+            database_type,
             origin: ConnectionOrigin::CliEphemeral,
             database: None,
         });
@@ -1839,6 +1845,7 @@ mod tests {
                 &ConnectionId::from_string("cli-sqlite-test"),
                 "app.db",
                 "sqlite:///tmp/app.db",
+                DatabaseType::SQLite,
             );
 
             assert!(session.is_ephemeral_connection());
