@@ -7,6 +7,7 @@ use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 use tokio::time::sleep_until;
 
+use sabiql_app::cmd::cli_postgres::{CliPostgresTarget, activate_cli_postgres_connection};
 use sabiql_app::cmd::cli_sqlite::{
     CliSqliteTarget, activate_cli_sqlite_connection, resolve_cli_sqlite_target,
 };
@@ -56,7 +57,7 @@ mod render_snapshots;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// SQLite database file path or sqlite:// DSN
+    /// SQLite database file path, sqlite:// DSN, or postgresql:// URI
     database: Option<String>,
 
     #[command(subcommand)]
@@ -96,7 +97,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    let cli_sqlite = resolve_cli_database(args.database)?;
+    let cli_target = resolve_cli_database(args.database)?;
     let project_root = find_project_root()?;
     let project_name = get_project_name(&project_root);
     let infrastructure = build_infrastructure()?;
@@ -104,17 +105,27 @@ async fn main() -> Result<()> {
     let state = initialize_state(
         project_name,
         app_settings,
-        cli_sqlite.as_ref(),
+        cli_target.as_ref(),
         &infrastructure,
     )?;
     let runtime = Runtime::new(state, infrastructure)?;
     Box::pin(runtime.run()).await
 }
 
-fn resolve_cli_database(database: Option<String>) -> Result<Option<CliSqliteTarget>> {
-    Ok(database
-        .map(|database| resolve_cli_sqlite_target(&database, &FsSqlitePathValidator))
-        .transpose()?)
+enum CliTarget {
+    Sqlite(CliSqliteTarget),
+    Postgres(CliPostgresTarget),
+}
+
+fn resolve_cli_database(database: Option<String>) -> Result<Option<CliTarget>> {
+    let Some(database) = database else {
+        return Ok(None);
+    };
+    if let Some(target) = CliPostgresTarget::parse_cli_argument(&database) {
+        return Ok(Some(CliTarget::Postgres(target)));
+    }
+    let target = resolve_cli_sqlite_target(&database, &FsSqlitePathValidator)?;
+    Ok(Some(CliTarget::Sqlite(target)))
 }
 
 struct Infrastructure {
@@ -141,7 +152,7 @@ fn build_infrastructure() -> Result<Infrastructure> {
 fn initialize_state(
     project_name: String,
     app_settings: AppSettings,
-    cli_sqlite: Option<&CliSqliteTarget>,
+    cli_target: Option<&CliTarget>,
     infrastructure: &Infrastructure,
 ) -> Result<AppState> {
     let mut state = AppState::new(project_name);
@@ -157,9 +168,9 @@ fn initialize_state(
             });
             state.set_connections(profiles);
             load_service_entries(&mut state, infrastructure.pg_service_entry_reader.as_ref());
-            configure_initial_connection_view(&mut state, cli_sqlite.is_some(), has_saved_profiles);
+            configure_initial_connection_view(&mut state, cli_target.is_some(), has_saved_profiles);
         }
-        Err(ConnectionStoreError::VersionMismatch { found, expected }) if cli_sqlite.is_none() => {
+        Err(ConnectionStoreError::VersionMismatch { found, expected }) if cli_target.is_none() => {
             eprintln!(
                 "Error: Configuration file version mismatch (found v{}, expected v{}).\n\
                  Please delete {} and reconfigure.",
@@ -169,15 +180,19 @@ fn initialize_state(
             );
             std::process::exit(1);
         }
-        Err(_) if cli_sqlite.is_none() => {
+        Err(_) if cli_target.is_none() => {
             state.connection_setup.set_first_run(true);
             state.modal.set_mode(InputMode::ConnectionSetup);
         }
         Err(_) => {}
     }
 
-    if let Some(target) = cli_sqlite {
-        activate_cli_sqlite_connection(&mut state, target, &FsSqlitePathValidator)?;
+    match cli_target {
+        Some(CliTarget::Sqlite(target)) => {
+            activate_cli_sqlite_connection(&mut state, target, &FsSqlitePathValidator)?;
+        }
+        Some(CliTarget::Postgres(target)) => activate_cli_postgres_connection(&mut state, target),
+        None => {}
     }
 
     Ok(state)
