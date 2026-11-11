@@ -91,6 +91,12 @@ You can also open an existing SQLite database directly:
 sabiql /path/to/app.db
 ```
 
+Or connect to PostgreSQL with a connection URI:
+
+```bash
+sabiql postgresql://user@localhost:5432/app
+```
+
 Use `Ctrl+R` before browsing data when you want to block writes. Press `?` for help, or open Settings with `,` to change the theme and keymap.
 
 ## Roadmap
